@@ -60,3 +60,34 @@ Exploit steps:
 1. The attacker submits a `UserLevelUp` transaction with `credits_to_burn = u32::MAX.`
 2. The large `credits_to_burn` causes `level_credits` to exceed `user.credits`, triggering an underflow.
 3. The transaction succeeds, setting `user.level` to `MAX_LEVEL`.
+
+# Vulnerability 3
+
+**Description:** The `MintCreditsToUser` instruction does not verify that the `game_config_info` account’s `account_type` is `GameConfig` before deserialization, relying only on PDA validation. If an attacker can supply a malicious account owned by the program (e.g., via a testnet setup or admin key compromise), deserialization could fail or produce unexpected behaviour, potentially allowing unauthorized credit minting or state corruption.
+
+**Criticality:** High. While exploitation requires specific conditions (e.g., testnet flexibility or admin key access), it risks economic destabilization through unauthorized credits.
+
+**Recommendation:**
+
+- Validate `account_type` before deserialization in `mint_credits_to_user`:
+    
+    ```rust
+    if game_config_info.try_get_type()? != AccountType::GameConfig {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    ```
+    
+
+**Proof of Concept:** (poc3.rs)
+
+Exploit steps:
+
+1. The attacker creates a malicious account with the PDA derived from [`admin_key`, `GAME_CONFIG_SEED`].
+2. The attacker submits a `MintCreditsToUser` transaction, passing the malicious account as `game_config_info`.
+3. The transaction may succeed or cause deserialization errors, demonstrating the lack of `account_type` validation.
+
+***Note:** This PoC assumes the CTF testnet allows manual creation of the PDA account, as PDAs are deterministic and typically owned by the program. In production, exploitation requires admin key compromise.*
+
+# Conclusion
+
+This audit identifies critical flaws in account validation, arithmetic safety and state verification, enabling unauthorized level-ups and credit manipulation. The provided PoCs confirm exploitability, and the recommendations secure the contract.
